@@ -3,3 +3,18 @@ project(micro_gemma LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+include(FetchContent)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+foreach(option METAL CUDA BLAS OPENMP CPU_REPACK)
+    set(GGML_${option} OFF CACHE BOOL "" FORCE)
+endforeach()
+# Only the ggml subtree is compiled. No llama model, tokenizer or inference code is linked.
+FetchContent_Declare(ggml_source
+    URL https://codeload.github.com/ggml-org/llama.cpp/tar.gz/b39a7bf1b038e8d1c3d58a313228dfc4f3993f5c
+    URL_HASH SHA256=b95b2f88259483caeeb535c5667cf291ba3425ae85faea4872f440936eec14ad
+    SOURCE_SUBDIR ggml)
+FetchContent_MakeAvailable(ggml_source)
+add_library(engine src/operations.cpp)
+target_include_directories(engine PUBLIC src)
+target_link_libraries(engine PUBLIC ggml ggml-cpu)
+target_compile_options(engine PRIVATE -Wall -Wextra -Wpedantic)
