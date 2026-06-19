@@ -29,6 +29,32 @@ void Operations::begin() {
     if (!ctx) throw std::runtime_error("Graph context allocation failed");
     graph = ggml_new_graph_custom(ctx, 8192, false);
 }
+ggml_tensor *Operations::external(float *data, int64_t rows, int64_t columns) {
+    // Wrap existing CPU memory without copying it.
+    auto *t = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, rows, columns);
+    auto *buffer = ggml_backend_cpu_buffer_from_ptr(data, ggml_nbytes(t));
+    if (!buffer) throw std::runtime_error("Cache buffer allocation failed");
+    external_.push_back(buffer);
+    t->data = data;
+    t->buffer = buffer;
+    return t;
+}
+ggml_tensor *Operations::norm(ggml_tensor *x, ggml_tensor *weight, float epsilon) {
+    auto *result = ggml_rms_norm(ctx, x, epsilon);
+    return weight ? ggml_mul(ctx, result, weight) : result;
+}
+ggml_tensor *Operations::mask(int used, int padded) {
+    auto *t = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, padded);
+    ggml_set_input(t);
+    // Hide unused cache slots with negative infinity.
+    std::vector<float> values(padded, -std::numeric_limits<float>::infinity());
+    std::fill_n(values.begin(), used, 0.0f);
+    masks_.emplace_back(t, std::move(values));
+    return t;
+}
+ggml_tensor *Operations::multiply(ggml_tensor *weights, ggml_tensor *x) {
+    return ggml_mul_mat(ctx, weights, x);
+}
 void Operations::run(ggml_tensor *output, ggml_tensor *token, int token_id, ggml_tensor *pos, int position) {
     ggml_set_output(output);
     ggml_build_forward_expand(graph, output);
