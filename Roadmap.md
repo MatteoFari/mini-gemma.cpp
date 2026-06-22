@@ -6,9 +6,9 @@ Build a working inference path one component at a time: CPU operations, model lo
 
 Set up the numerical backend that the transformer will use.
 
-- [ ] **CPU backend:** Initialize ggml and configure the number of worker threads.
-- [ ] **Tensor operations:** Wrap matrix multiplication, RMS normalization, and KV buffer access with attention masking.
-- [ ] **Graph execution:** Build and execute a graph for each token while reusing scratch allocations.
+- [x] **CPU backend:** Initialize ggml and configure the number of worker threads.
+- [x] **Tensor operations:** Wrap matrix multiplication, RMS normalization, and KV buffer access with attention masking.
+- [x] **Graph execution:** Build and execute a graph for each token while reusing scratch allocations.
 
 ## 2. Model Loading (`loader.cpp`, `model.cpp`)
 
