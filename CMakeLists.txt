@@ -14,7 +14,7 @@ FetchContent_Declare(ggml_source
     URL_HASH SHA256=b95b2f88259483caeeb535c5667cf291ba3425ae85faea4872f440936eec14ad
     SOURCE_SUBDIR ggml)
 FetchContent_MakeAvailable(ggml_source)
-add_library(engine src/operations.cpp)
+add_library(engine src/loader.cpp src/operations.cpp)
 target_include_directories(engine PUBLIC src)
 target_link_libraries(engine PUBLIC ggml ggml-cpu)
 target_compile_options(engine PRIVATE -Wall -Wextra -Wpedantic)
