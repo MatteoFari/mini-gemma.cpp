@@ -50,3 +50,87 @@ Tokenizer::Tokenizer(const ModelLoader &loader) {
     for (size_t i = 0; i < gguf_get_arr_n(meta, merges); ++i)
         ranks_[gguf_get_arr_str(meta, merges, i)] = int(i);
 }
+std::vector<int> Tokenizer::encode(std::string_view text, bool initial) const {
+    if (text.size() > size_t(std::numeric_limits<int>::max() / 8))
+        throw std::runtime_error("Prompt too large");
+    struct Piece {
+        int prev, next, start, length;
+        bool alive = true;
+    };
+    // Lower merge ranks win. Ties go to the leftmost pair.
+    using Merge = std::tuple<int, int, int, int, int>;
+    std::priority_queue<Merge, std::vector<Merge>, std::greater<Merge>> queue;
+    std::vector<Piece> pieces;
+    std::string normalized;
+    auto propose = [&](int left, int right) {
+        if (left < 0 || right < 0) return;
+        const auto &a = pieces[left];
+        const auto &b = pieces[right];
+        std::string pair = normalized.substr(a.start, a.length) + " " + normalized.substr(b.start, b.length);
+        auto it = ranks_.find(pair);
+        if (it != ranks_.end()) queue.emplace(it->second, left, right, a.length, b.length);
+    };
+    auto append = [&](std::string_view value) {
+        int i = int(pieces.size());
+        pieces.push_back({i - 1, -1, int(normalized.size()), int(value.size())});
+        normalized.append(value);
+        if (i) {
+            pieces[i - 1].next = i;
+            propose(i - 1, i);
+        }
+    };
+    if (space_prefix_ && !text.empty() && text.front() != ' ') append(space);
+    // Split text into control tokens, characters, or byte fallbacks.
+    for (size_t i = 0; i < text.size();) {
+        bool special = false;
+        if (text[i] == '<')
+            for (auto control : controls_) {
+                if (text.substr(i).starts_with(control)) {
+                    append(control);
+                    i += control.size();
+                    special = true;
+                    break;
+                }
+            }
+        if (special) continue;
+        auto byte = static_cast<unsigned char>(text[i]);
+        size_t count = byte < 0x80 ? 1 : byte < 0xE0 ? 2 : byte < 0xF0 ? 3 : 4;
+        count = std::min(count, text.size() - i);
+        auto character = text.substr(i, count);
+        if (character == " ")
+            append(space);
+        else if (ids_.contains(character))
+            append(character);
+        else
+            for (unsigned char part : character) {
+                char fallback[7];
+                std::snprintf(fallback, sizeof(fallback), "<0x%02X>", part);
+                append(fallback);
+            }
+        i += count;
+    }
+    // Merge the best-ranked adjacent pieces until no candidates remain.
+    while (!queue.empty()) {
+        auto [rank, left, right, left_size, right_size] = queue.top();
+        queue.pop();
+        auto &a = pieces[left];
+        auto &b = pieces[right];
+        // Ignore pairs changed by an earlier merge.
+        if (!a.alive || !b.alive || a.next != right || a.length != left_size || b.length != right_size)
+            continue;
+        a.length += b.length;
+        a.next = b.next;
+        b.alive = false;
+        if (b.next >= 0) pieces[b.next].prev = left;
+        propose(a.prev, left);
+        propose(left, a.next);
+    }
+    std::vector<int> result;
+    if (initial && add_bos_) result.push_back(bos_);
+    for (int i = pieces.empty() ? -1 : 0; i >= 0; i = pieces[i].next) {
+        auto value = std::string_view(normalized).substr(pieces[i].start, pieces[i].length);
+        auto it = ids_.find(value);
+        result.push_back(it == ids_.end() ? unknown_ : it->second);
+    }
+    return result;
+}
