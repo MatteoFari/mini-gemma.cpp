@@ -134,3 +134,26 @@ std::vector<int> Tokenizer::encode(std::string_view text, bool initial) const {
     }
     return result;
 }
+std::string Tokenizer::decode(int token) const {
+    if (token < 0 || size_t(token) >= tokens_.size()) throw std::runtime_error("Invalid token ID");
+    auto value = tokens_[token];
+    // Decode byte tokens directly and turn space markers into spaces.
+    if (value.size() == 6 && value.starts_with("<0x") && value.back() == '>') {
+        unsigned byte = 0;
+        auto [end, error] = std::from_chars(value.data() + 3, value.data() + 5, byte, 16);
+        if (error != std::errc{} || end != value.data() + 5) throw std::runtime_error("Invalid byte token");
+        return std::string(1, char(byte));
+    }
+    std::string result;
+    for (size_t i = 0; i < value.size();) {
+        if (value.substr(i).starts_with(space)) {
+            result += ' ';
+            i += space.size();
+        } else
+            result += value[i++];
+    }
+    return result;
+}
+bool Tokenizer::stop(int token) const {
+    return token == eos_ || tokens_.at(token) == "<turn|>";
+}
