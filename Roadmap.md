@@ -14,16 +14,16 @@ Set up the numerical backend that the transformer will use.
 
 Read the model configuration and access quantized weights without copying the entire file into new buffers.
 
-- [ ] **Weight access:** Read GGUF metadata, map weights read-only, and bind tensors to their file offsets with automatic resource cleanup.
+- [x] **Weight access:** Read GGUF metadata, map weights read-only, and bind tensors to their file offsets with automatic resource cleanup.
 - [ ] **Validation:** Reject truncated data and check the architecture, required tensor shapes, and numerical formats.
 
 ## 3. Text Encoding (`tokenizer.cpp`)
 
 Translate prompts into token IDs and generated IDs back into readable text.
 
-- [ ] **Vocabulary:** Load tokens, merge ranks, and special-token settings from the GGUF.
-- [ ] **BPE encoding:** Merge pieces by rank with deterministic ties, UTF-8 handling, byte fallback, and control-token support.
-- [ ] **Decoding:** Restore text from token IDs and recognize end-of-sequence and turn markers.
+- [x] **Vocabulary:** Load tokens, merge ranks, and special-token settings from the GGUF.
+- [x] **BPE encoding:** Merge pieces by rank with deterministic ties, UTF-8 handling, byte fallback, and control-token support.
+- [x] **Decoding:** Restore text from token IDs and recognize end-of-sequence and turn markers.
 
 ## 4. Transformer Layers (`model.cpp`)
 
