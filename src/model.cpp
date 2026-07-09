@@ -89,3 +89,81 @@ Model::Model(const ModelLoader &loader, int context, int threads) : ops_(threads
         layers_.push_back(l);
     }
 }
+std::span<const float> Model::forward(int token_id, bool output) {
+    if (token_id < 0 || token_id >= embedding_->ne[1]) throw std::runtime_error("Token outside vocabulary");
+    if (position_ >= context_) throw std::runtime_error("Context full; use /reset");
+    ops_.begin();
+    auto *c = ops_.ctx;
+    auto *token = ggml_new_tensor_1d(c, GGML_TYPE_I32, 1);
+    auto *pos = ggml_new_tensor_1d(c, GGML_TYPE_I32, 1);
+    ggml_set_input(token);
+    ggml_set_input(pos);
+    auto mm = [&](ggml_tensor *w, ggml_tensor *x) { return ops_.multiply(w, x); };
+    auto norm = [&](ggml_tensor *x, ggml_tensor *w) { return ops_.norm(x, w, epsilon_); };
+    // Prepare the token embedding and per-layer inputs.
+    auto *x = ggml_scale(c, ggml_get_rows(c, embedding_, token), std::sqrt(float(embedding_->ne[0])));
+    auto *projected = ggml_scale(c, mm(layer_projection_, x), 1.0f / std::sqrt(float(embedding_->ne[0])));
+    auto *per_token = ggml_scale(c, ggml_get_rows(c, layer_embedding_, token), std::sqrt(float(per_layer_)));
+    std::vector<std::tuple<ggml_tensor *, ggml_tensor *, ggml_tensor *>> cache_views(caches_.size());
+    for (size_t i = 0; i < layers_.size(); ++i) {
+        const auto &l = layers_[i];
+        auto rope = [&](ggml_tensor *value) {
+            return ggml_rope_ext(c, value, pos, l.sliding ? nullptr : rope_factors_, l.head_dim,
+                                 GGML_ROPE_TYPE_NEOX, 0, l.sliding ? sliding_base_ : base_, 1, 0, 1, 0, 0);
+        };
+        // Compute K/V once and reuse them in shared layers.
+        auto *input = norm(x, l.attn_norm);
+        auto *q = rope(norm(ggml_reshape_2d(c, mm(l.q, input), l.head_dim, l.heads), l.q_norm));
+        if (!l.shared) {
+            auto &cache = caches_[l.cache];
+            int used = std::min(position_ + 1, cache.capacity);
+            int padded = (used + 255) / 256 * 256;
+            size_t offset = size_t(KVCache::slot(position_, cache.capacity)) * cache.width * sizeof(float);
+            auto *keys = ops_.external(cache.keys.get(), cache.width, padded);
+            auto *values = ops_.external(cache.values.get(), cache.width, padded);
+            auto *k = rope(norm(mm(l.k, input), l.k_norm));
+            auto *v = norm(mm(l.v, input), nullptr);
+            // Schedule cache writes before attention reads.
+            ggml_build_forward_expand(ops_.graph, ggml_cpy(c, k, ggml_view_1d(c, keys, cache.width, offset)));
+            ggml_build_forward_expand(ops_.graph,
+                                      ggml_cpy(c, v, ggml_view_1d(c, values, cache.width, offset)));
+            cache_views[l.cache] = {keys, values, ops_.mask(used, padded)};
+        }
+        auto [keys, values, mask] = cache_views[l.cache];
+        q = ggml_reshape_3d(c, q, l.head_dim, 1, l.heads);
+        // Masked padding keeps SIMD softmax stable as context grows.
+        auto *scores = mm(keys, q);
+        ggml_mul_mat_set_prec(scores, GGML_PREC_F32);
+        scores = ggml_soft_max_ext(c, scores, mask, 1.0f, 0.0f);
+        auto *attended = mm(ggml_cont(c, ggml_transpose(c, values)), scores);
+        auto *flat = ggml_reshape_1d(c, attended, int64_t(l.head_dim) * l.heads);
+        x = ggml_add(c, x, norm(mm(l.out, flat), l.post_attn));
+        // Apply GELU gating, then add the residual.
+        input = norm(x, l.ffn_norm);
+        auto *gated = ggml_mul(c, ggml_gelu(c, mm(l.gate, input)), mm(l.up, input));
+        x = ggml_add(c, x, norm(mm(l.down, gated), l.post_ffn));
+        // Add Gemma's token-dependent input to this layer.
+        size_t offset = i * per_layer_ * sizeof(float);
+        auto *extra =
+            ggml_scale(c,
+                       ggml_add(c, norm(ggml_view_1d(c, projected, per_layer_, offset), layer_norm_),
+                                ggml_view_1d(c, per_token, per_layer_, offset)),
+                       1.0f / std::sqrt(2.0f));
+        auto *gate = ggml_mul(c, ggml_gelu(c, mm(l.input_gate, x)), extra);
+        x = ggml_scale(c, ggml_add(c, x, norm(mm(l.projection, gate), l.post_norm)), l.scale);
+    }
+    if (output) {
+        // Reuse embedding weights for logits, then apply the soft cap.
+        x = mm(embedding_, norm(x, output_norm_));
+        x = ggml_scale(c, ggml_tanh(c, ggml_scale(c, x, 1.0f / softcap_)), softcap_);
+    }
+    ops_.run(x, token, token_id, pos, position_);
+    ++position_;
+    return {static_cast<const float *>(x->data), output ? size_t(embedding_->ne[1]) : 0};
+}
+size_t Model::cache_bytes() const {
+    size_t bytes = 0;
+    for (const auto &c : caches_)
+        bytes += size_t(c.width) * c.storage * 2 * sizeof(float);
+    return bytes;
+}
