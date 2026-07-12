@@ -15,7 +15,7 @@ Set up the numerical backend that the transformer will use.
 Read the model configuration and access quantized weights without copying the entire file into new buffers.
 
 - [x] **Weight access:** Read GGUF metadata, map weights read-only, and bind tensors to their file offsets with automatic resource cleanup.
-- [ ] **Validation:** Reject truncated data and check the architecture, required tensor shapes, and numerical formats.
+- [x] **Validation:** Reject truncated data and check the architecture, required tensor shapes, and numerical formats.
 
 ## 3. Text Encoding (`tokenizer.cpp`)
 
@@ -29,16 +29,16 @@ Translate prompts into token IDs and generated IDs back into readable text.
 
 Assemble Gemma's attention and feed-forward blocks from ggml operations.
 
-- [ ] **Embeddings:** Look up token embeddings and prepare the additional per-layer inputs.
-- [ ] **Attention:** Build query/key/value projections, apply normalization and RoPE, and compute full or sliding-window attention with masked softmax.
-- [ ] **Feed-forward blocks:** Add GELU gating, per-layer input projections, normalization, and residual connections.
+- [x] **Embeddings:** Look up token embeddings and prepare the additional per-layer inputs.
+- [x] **Attention:** Build query/key/value projections, apply normalization and RoPE, and compute full or sliding-window attention with masked softmax.
+- [x] **Feed-forward blocks:** Add GELU gating, per-layer input projections, normalization, and residual connections.
 
 ## 5. Forward Pass and KV State (`model.cpp`)
 
 Connect the layers and retain the state needed to process the next token.
 
-- [ ] **KV storage:** Allocate aligned F32 buffers for full and sliding attention, with ring indexing and cache sharing between the appropriate layers.
-- [ ] **Forward pass:** Run all 35 layers, update cache positions, and produce soft-capped logits, skipping the vocabulary projection for intermediate prompt tokens.
+- [x] **KV storage:** Allocate aligned F32 buffers for full and sliding attention, with ring indexing and cache sharing between the appropriate layers.
+- [x] **Forward pass:** Run all 35 layers, update cache positions, and produce soft-capped logits, skipping the vocabulary projection for intermediate prompt tokens.
 - [ ] **Batched prefill:** Process several prompt tokens per graph to reduce execution overhead.
 
 ## 6. Sampling and Metrics (`sampler.cpp`, `profiler.cpp`)
