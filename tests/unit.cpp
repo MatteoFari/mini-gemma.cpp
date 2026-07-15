@@ -10,8 +10,21 @@ void require(bool condition, const char *message) {
     if (!condition) throw std::runtime_error(message);
 }
 int main() try {
+    std::mt19937 rng(42);
     std::array<float, 3> logits{1, 4, 2};
-    require(sample(logits) == 1, "Greedy chooses maximum");
+    require(sample(logits, 0, 1, rng) == 1, "Greedy chooses maximum");
+    for (int i = 0; i < 100; ++i)
+        require(sample(logits, 1, 0.01f, rng) == 1, "Nucleus excludes tail");
+    auto saved = rng;
+    int first = sample(logits, 1, 1, rng);
+    require(first == sample(logits, 1, 1, saved), "Seeded sampling is reproducible");
+    bool rejected = false;
+    try {
+        sample(logits, 1, 0, rng);
+    } catch (const std::runtime_error &) {
+        rejected = true;
+    }
+    require(rejected, "Invalid top-p rejected");
     // Exercise actual ggml graph allocation, projection and normalization against known values.
     Operations ops(2);
     alignas(64) std::array<float, 4> embedding{3, 4, 8, 6};
