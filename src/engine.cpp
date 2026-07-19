@@ -66,3 +66,25 @@ void LLMEngine::reset() {
 void LLMEngine::metrics(std::ostream &out) const {
     profiler_.print(out, model_.position(), model_.capacity(), model_.cache_bytes(), model_.scratch_bytes());
 }
+void LLMEngine::logits(const std::string &text, const std::string &path) {
+    auto tokens = tokenizer_.encode(text);
+    if (tokens.empty() || tokens.size() > size_t(model_.capacity()))
+        throw std::runtime_error("Invalid probe length");
+    reset();
+    std::span<const float> values;
+    for (size_t i = 0; i < tokens.size(); ++i)
+        values = model_.forward(tokens[i], i + 1 == tokens.size());
+    // Check file identity before truncating, to protect the mapped weights.
+    int descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC | O_NONBLOCK, 0600);
+    if (descriptor < 0) throw std::runtime_error("Cannot open logits output");
+    std::unique_ptr<FILE, decltype(&std::fclose)> file(fdopen(descriptor, "wb"), std::fclose);
+    if (!file) {
+        close(descriptor);
+        throw std::runtime_error("Cannot create logits stream");
+    }
+    if (loader_.is_model_file(descriptor)) throw std::runtime_error("Logits output aliases the model file");
+    if (ftruncate(descriptor, 0) != 0 ||
+        std::fwrite(values.data(), sizeof(float), values.size(), file.get()) != values.size() ||
+        std::fflush(file.get()) != 0)
+        throw std::runtime_error("Cannot write logits");
+}

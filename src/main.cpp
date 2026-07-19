@@ -8,7 +8,7 @@ namespace {
 void help() {
     std::cout << "Usage: inference_engine MODEL.gguf [--prompt TEXT] [--threads N] [--ctx N]\n"
               << "  --max-tokens N --temp F --top-p F --seed N --system TEXT\n"
-              << "  --tokens TEXT prints token IDs\n"
+              << "  --tokens TEXT prints token IDs. --logits FILE --prompt TEXT writes raw F32 scores\n"
               << "Interactive commands: /metrics /reset /help /exit\n";
 }
 int integer(const std::string &value) {
@@ -35,7 +35,7 @@ int main(int argc, char **argv) try {
     }
     // Read generation settings before loading the model.
     Options options;
-    std::string prompt, token_text;
+    std::string prompt, token_text, dump;
     bool one_shot = false, tokenize = false;
     for (int i = 2; i < argc; ++i) {
         std::string flag = argv[i];
@@ -47,7 +47,9 @@ int main(int argc, char **argv) try {
         } else if (flag == "--tokens") {
             token_text = value;
             tokenize = true;
-        } else if (flag == "--threads")
+        } else if (flag == "--logits")
+            dump = value;
+        else if (flag == "--threads")
             options.threads = integer(value);
         else if (flag == "--ctx")
             options.context = integer(value);
@@ -69,6 +71,7 @@ int main(int argc, char **argv) try {
     if (options.max_tokens < 1 || options.max_tokens > 8192 || options.temperature < 0 ||
         options.top_p <= 0 || options.top_p > 1)
         throw std::runtime_error("Invalid generation settings");
+    if (!dump.empty() && !one_shot) throw std::runtime_error("--logits requires --prompt");
     // Token inspection needs the vocabulary but no inference graph.
     if (tokenize) {
         ModelLoader loader(argv[1]);
@@ -82,6 +85,10 @@ int main(int argc, char **argv) try {
     LLMEngine engine(argv[1], options);
     engine.set_boot(elapsed(start));
     std::cerr << "Model ready on CPU in " << elapsed(start) << " s\n";
+    if (!dump.empty()) {
+        engine.logits(prompt, dump);
+        return 0;
+    }
     if (one_shot) {
         engine.chat(prompt, std::cout);
         engine.metrics(std::cerr);

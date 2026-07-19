@@ -25,4 +25,5 @@ class LLMEngine {
     void metrics(std::ostream &out) const;
     void set_boot(double seconds) { profiler_.boot = seconds; }
     const Tokenizer &tokenizer() const { return tokenizer_; }
+    void logits(const std::string &text, const std::string &path);
 };
