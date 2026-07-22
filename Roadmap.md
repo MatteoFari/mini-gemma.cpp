@@ -45,21 +45,21 @@ Connect the layers and retain the state needed to process the next token.
 
 Turn model scores into token choices and measure the cost of inference.
 
-- [ ] **Token selection:** Support greedy and temperature/top-p sampling with seeded randomness.
-- [ ] **Profiling:** Report initialization, prefill, first-token latency, decode throughput, token counts, and allocated KV/scratch memory.
+- [x] **Token selection:** Support greedy and temperature/top-p sampling with seeded randomness.
+- [x] **Profiling:** Report initialization, prefill, first-token latency, decode throughput, token counts, and allocated KV/scratch memory.
 - [ ] **Top-k sampling:** Add an optional candidate limit before top-p selection.
 
 ## 7. Conversation Management (`engine.cpp`)
 
 Coordinate the loader, tokenizer, model, sampling, and profiling in the engine.
 
-- [ ] **Generation loop:** Format Gemma's chat turns, process the prompt, and stream tokens until a stop marker or output limit.
-- [ ] **Conversation state:** Preserve previous turns and close both natural and length-limited replies.
-- [ ] **Context management:** Reserve space for the prompt, reply, and closing tokens before changing state. Support clearing the conversation and reseeding sampling.
+- [x] **Generation loop:** Format Gemma's chat turns, process the prompt, and stream tokens until a stop marker or output limit.
+- [x] **Conversation state:** Preserve previous turns and close both natural and length-limited replies.
+- [x] **Context management:** Reserve space for the prompt, reply, and closing tokens before changing state. Support clearing the conversation and reseeding sampling.
 
 ## 8. Terminal Interface (`main.cpp`)
 
 Expose the engine through a small interactive CLI.
 
-- [ ] **Interactive use:** Read prompts, stream responses, and handle `/metrics`, `/reset`, `/help`, and `/exit`.
-- [ ] **CLI options:** Expose model and generation settings, one-shot prompts, token inspection, and raw-logit export.
+- [x] **Interactive use:** Read prompts, stream responses, and handle `/metrics`, `/reset`, `/help`, and `/exit`.
+- [x] **CLI options:** Expose model and generation settings, one-shot prompts, token inspection, and raw-logit export.
