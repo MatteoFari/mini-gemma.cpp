@@ -52,4 +52,21 @@ italian = "Qual è la capitale della Francia? Rispondi in italiano con una sola 
 italian_answer = run("--prompt", italian).stdout.strip()
 check("Parigi" in italian_answer, "Italian generation failed")
 
-print(f"{checks} reference and generation assertions passed.")
+# Reset must reproduce greedy output and reset counters while retaining the loaded model.
+chat = run(stdin=f"{english}\n/metrics\n/reset\n/metrics\n{english}\n/metrics\n/exit\n").stdout
+check(chat.count("AI > The capital of France is Paris.") == 2, "Reset changed deterministic output")
+check("context: 0/2048" in chat, "Reset did not clear position")
+counts = re.findall(r"Generated: (\d+) tokens", chat)
+check(len(counts) == 3 and counts[0] == counts[2] and counts[1] == "0", "Metrics accumulated across requests")
+
+# A rejected prompt must preserve the previous conversation, without consuming context.
+conversation = "Remember: my name is Matteo. Reply with OK.\n" + " a" * 150
+conversation += "\nWhat is my name? Answer with just the name.\n/exit\n"
+chat = run("--ctx", "128", stdin=conversation).stdout
+check("Not enough context" in chat and "AI > Matteo" in chat, "Context guard lost earlier conversation")
+for args in [("--temp", "nan"), ("--top-p", "0"), ("--max-tokens", "0"), ("--threads", "0"),
+             ("--ctx", "16"), ("--threads", "4oops"), ("--unknown", "1"), ("--prompt", " ")]:
+    run(*args, success=False)
+    checks += 1
+check(run(stdin="").returncode == 0, "EOF did not exit")
+print(f"{checks} integration assertions passed: tokenizer, logits, cache wrap, chat, reset, limits and errors.")
