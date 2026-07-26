@@ -1,0 +1,4 @@
+# Pinned ggml's graph-size calculator deliberately offsets a null pointer.
+# Exempt only that helper. Keep address checks and project UBSan checks.
+[undefined]
+fun:incr_ptr_aligned
