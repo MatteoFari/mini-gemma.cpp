@@ -51,7 +51,7 @@ Turn model scores into token choices and measure the cost of inference.
 
 ## 7. Conversation Management (`engine.cpp`)
 
-Coordinate the loader, tokenizer, model, sampling, and profiling in the engine.
+Coordinate the loader, tokenizer, model, prefix cache, sampling, and profiling in the engine.
 
 - [x] **Generation loop:** Format Gemma's chat turns, process the prompt, and stream tokens until a stop marker or output limit.
 - [x] **Conversation state:** Preserve previous turns and close both natural and length-limited replies.
@@ -63,3 +63,11 @@ Expose the engine through a small interactive CLI.
 
 - [x] **Interactive use:** Read prompts, stream responses, and handle `/metrics`, `/reset`, `/help`, and `/exit`.
 - [x] **CLI options:** Expose model and generation settings, one-shot prompts, token inspection, and raw-logit export.
+
+## 9. Prefix Reuse (`prefix_cache.cpp`, `model.cpp`, `engine.cpp`)
+
+Reuse completed prompt computation when a fresh conversation begins with a previously processed token prefix.
+
+- [ ] **State reuse:** Save KV state and position at prompt intervals and boundaries. Restore the longest exact prefix while leaving a token to compute fresh logits.
+- [ ] **Cache lifecycle:** Retain checkpoints across resets, enforce a storage budget, refresh duplicates, and evict least-recently-used entries.
+- [ ] **Measurement:** Report reuse, storage, and evictions. Benchmark shared-document questions with caching off and on, comparing latency and response equality.
