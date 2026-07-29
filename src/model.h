@@ -28,6 +28,17 @@ class Model {
         *rope_factors_;
 
   public:
+    class Snapshot {
+        friend class Model;
+        const Model *owner_;
+        int position_;
+        std::vector<float> data_;
+        Snapshot(const Model *owner, int position, size_t elements)
+            : owner_(owner), position_(position), data_(elements) {}
+
+      public:
+        size_t bytes() const { return data_.capacity() * sizeof(float); }
+    };
     Model(const ModelLoader &loader, int context, int threads);
     // Returned logits are valid until the next forward pass.
     std::span<const float> forward(int token, bool output = true);
@@ -35,5 +46,8 @@ class Model {
     int position() const { return position_; }
     int capacity() const { return context_; }
     size_t cache_bytes() const;
+    size_t snapshot_bytes() const;
+    Snapshot snapshot() const;
+    void restore(const Snapshot &snapshot);
     size_t scratch_bytes() const { return ops_.scratch_bytes(); }
 };

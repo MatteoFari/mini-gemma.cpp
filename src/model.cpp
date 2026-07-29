@@ -167,3 +167,39 @@ size_t Model::cache_bytes() const {
         bytes += size_t(c.width) * c.storage * 2 * sizeof(float);
     return bytes;
 }
+size_t Model::snapshot_bytes() const {
+    size_t bytes = 0;
+    for (const auto &c : caches_)
+        bytes += size_t(c.width) * std::min(position_, c.capacity) * 2 * sizeof(float);
+    return bytes;
+}
+Model::Snapshot Model::snapshot() const {
+    Snapshot saved(this, position_, snapshot_bytes() / sizeof(float));
+    auto output = saved.data_.begin();
+    for (const auto &c : caches_) {
+        size_t active = size_t(c.width) * std::min(position_, c.capacity);
+        // Keep ring order unchanged to preserve floating-point results.
+        output = std::copy_n(c.keys.get(), active, output);
+        output = std::copy_n(c.values.get(), active, output);
+    }
+    return saved;
+}
+void Model::restore(const Snapshot &saved) {
+    if (saved.owner_ != this || saved.position_ < 0 || saved.position_ > context_)
+        throw std::runtime_error("Snapshot belongs to a different model");
+    size_t expected = 0;
+    for (const auto &c : caches_)
+        expected += size_t(c.width) * std::min(saved.position_, c.capacity) * 2;
+    if (saved.data_.size() != expected) throw std::runtime_error("Invalid snapshot storage");
+    auto input = saved.data_.begin();
+    for (auto &c : caches_) {
+        size_t active = size_t(c.width) * std::min(saved.position_, c.capacity);
+        for (float *buffer : {c.keys.get(), c.values.get()}) {
+            std::copy_n(input, active, buffer);
+            input += active;
+            // Clear padding so attention cannot read stale values.
+            std::fill(buffer + active, buffer + size_t(c.width) * c.storage, 0.0f);
+        }
+    }
+    position_ = saved.position_;
+}
