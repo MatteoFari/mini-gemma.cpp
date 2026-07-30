@@ -10,7 +10,7 @@
 LLMEngine::LLMEngine(const std::string &path, const Options &options)
     : options_(options), loader_(path), tokenizer_(loader_),
       model_(loader_, options.context, options.threads),
-      rng_(options.seed) {
+      prefixes_(model_, options.prefix_cache_mib * 1048576), rng_(options.seed) {
 }
 void LLMEngine::chat(const std::string &prompt, std::ostream &out) {
     if (prompt.find_first_not_of(" \t\r\n") == std::string::npos)
@@ -30,10 +30,23 @@ void LLMEngine::chat(const std::string &prompt, std::ostream &out) {
     profiler_ = {};
     profiler_.boot = boot;
     profiler_.prompt_tokens = int(tokens.size());
+    size_t system_boundary = 0;
+    if (initial && prefixes_.enabled()) {
+        auto fixed = tokenizer_.encode(system, true);
+        // Text boundaries can merge, so compare token IDs before caching.
+        system_boundary =
+            std::mismatch(tokens.begin(), tokens.end(), fixed.begin(), fixed.end()).first - tokens.begin();
+    }
+    size_t reused = initial && prefixes_.enabled() ? prefixes_.restore(tokens) : 0;
+    profiler_.reused_tokens = int(reused);
     std::span<const float> scores;
     // Fill the KV cache. Only the last prompt token needs logits.
-    for (size_t i = 0; i < tokens.size(); ++i) {
+    for (size_t i = reused; i < tokens.size(); ++i) {
         scores = model_.forward(tokens[i], i + 1 == tokens.size());
+        // Save checkpoints for questions that share an earlier prefix.
+        if (initial && prefixes_.enabled() && i + 1 < tokens.size() &&
+            ((i + 1) % 64 == 0 || i + 1 == system_boundary || i + 2 == tokens.size()))
+            prefixes_.remember(std::span(tokens).first(i + 1));
     }
     profiler_.prefill = elapsed(start);
     Clock::time_point first{};
@@ -56,7 +69,7 @@ void LLMEngine::chat(const std::string &prompt, std::ostream &out) {
     out << '\n';
 }
 void LLMEngine::reset() {
-    // Reset the conversation and sampling.
+    // Reset the conversation and sampling, keeping prefix checkpoints.
     model_.reset();
     rng_.seed(options_.seed);
     double boot = profiler_.boot;
@@ -65,6 +78,9 @@ void LLMEngine::reset() {
 }
 void LLMEngine::metrics(std::ostream &out) const {
     profiler_.print(out, model_.position(), model_.capacity(), model_.cache_bytes(), model_.scratch_bytes());
+    if (prefixes_.enabled())
+        out << "Prefix cache: " << prefixes_.bytes() / 1048576.0 << '/' << prefixes_.budget() / 1048576.0
+            << " MiB | evictions: " << prefixes_.evictions() << " total\n";
 }
 void LLMEngine::logits(const std::string &text, const std::string &path) {
     auto tokens = tokenizer_.encode(text);

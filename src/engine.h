@@ -2,12 +2,14 @@
 #include "model.h"
 #include "tokenizer.h"
 #include "profiler.h"
+#include "prefix_cache.h"
 #include <random>
 
 struct Options {
     int context = 2048, threads = 4, max_tokens = 128;
     float temperature = 0, top_p = 0.9f;
     unsigned seed = 42;
+    size_t prefix_cache_mib = 0;
     std::string system;
 };
 class LLMEngine {
@@ -15,6 +17,7 @@ class LLMEngine {
     ModelLoader loader_;
     Tokenizer tokenizer_;
     Model model_;
+    PrefixCache prefixes_;
     std::mt19937 rng_;
     Profiler profiler_;
 

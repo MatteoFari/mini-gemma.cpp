@@ -8,6 +8,7 @@ namespace {
 void help() {
     std::cout << "Usage: inference_engine MODEL.gguf [--prompt TEXT] [--threads N] [--ctx N]\n"
               << "  --max-tokens N --temp F --top-p F --seed N --system TEXT\n"
+              << "  --prefix-cache-mib N enables reusable prompt checkpoints (default 0, max 1024)\n"
               << "  --tokens TEXT prints token IDs. --logits FILE --prompt TEXT writes raw F32 scores\n"
               << "Interactive commands: /metrics /reset /help /exit\n";
 }
@@ -55,7 +56,11 @@ int main(int argc, char **argv) try {
             options.context = integer(value);
         else if (flag == "--max-tokens")
             options.max_tokens = integer(value);
-        else if (flag == "--seed") {
+        else if (flag == "--prefix-cache-mib") {
+            int mib = integer(value);
+            if (mib < 0 || mib > 1024) throw std::runtime_error("Prefix cache budget must be 0..1024 MiB");
+            options.prefix_cache_mib = size_t(mib);
+        } else if (flag == "--seed") {
             int seed = integer(value);
             if (seed < 0) throw std::runtime_error("Negative seed");
             options.seed = unsigned(seed);

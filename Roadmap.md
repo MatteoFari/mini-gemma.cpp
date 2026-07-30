@@ -68,6 +68,6 @@ Expose the engine through a small interactive CLI.
 
 Reuse completed prompt computation when a fresh conversation begins with a previously processed token prefix.
 
-- [ ] **State reuse:** Save KV state and position at prompt intervals and boundaries. Restore the longest exact prefix while leaving a token to compute fresh logits.
-- [ ] **Cache lifecycle:** Retain checkpoints across resets, enforce a storage budget, refresh duplicates, and evict least-recently-used entries.
+- [x] **State reuse:** Save KV state and position at prompt intervals and boundaries. Restore the longest exact prefix while leaving a token to compute fresh logits.
+- [x] **Cache lifecycle:** Retain checkpoints across resets, enforce a storage budget, refresh duplicates, and evict least-recently-used entries.
 - [ ] **Measurement:** Report reuse, storage, and evictions. Benchmark shared-document questions with caching off and on, comparing latency and response equality.
