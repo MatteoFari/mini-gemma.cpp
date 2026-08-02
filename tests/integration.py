@@ -59,13 +59,32 @@ check("context: 0/2048" in chat, "Reset did not clear position")
 counts = re.findall(r"Generated: (\d+) tokens", chat)
 check(len(counts) == 3 and counts[0] == counts[2] and counts[1] == "0", "Metrics accumulated across requests")
 
+# Cached reset reuses prefill, including seeded sampling, but never bypasses the context guard.
+session = f"{english}\n/metrics\n/reset\n{english}\n/metrics\n/exit\n"
+for sampling in [[], ["--temp", "0.7", "--seed", "123"]]:
+    uncached = run(*sampling, stdin=session).stdout
+    cached = run("--prefix-cache-mib", "16", *sampling, stdin=session).stdout
+    replies = lambda text: re.findall(r"AI > (.*?)\nUser >", text, re.S)
+    check(replies(cached) == replies(uncached), "Prefix cache changed generated output")
+    reused = list(map(int, re.findall(r"reused: (\d+) tokens", cached)))
+    check(len(reused) == 2 and reused[0] == 0 and reused[1] > 0, "Reset did not reuse prefill")
+mixed = run("--prefix-cache-mib", "16",
+            stdin=f"{english}\n/metrics\n/reset\n{italian}\n/metrics\n/exit\n").stdout
+check(replies(mixed) == [answer.stdout.strip(), italian_answer], "Different questions changed cached replies")
+check(int(re.findall(r"reused: (\d+) tokens", mixed)[1]) > 0, "Short shared system prefix was not reused")
+guarded = run("--prefix-cache-mib", "16", "--ctx", "128",
+              stdin=f"{english}\n/reset\n{' a' * 150}\n{english}\n/metrics\n/exit\n").stdout
+check("Not enough context" in guarded and guarded.count("AI > The capital of France is Paris.") == 2,
+      "Rejected cached request corrupted the next request")
+
 # A rejected prompt must preserve the previous conversation, without consuming context.
 conversation = "Remember: my name is Matteo. Reply with OK.\n" + " a" * 150
 conversation += "\nWhat is my name? Answer with just the name.\n/exit\n"
 chat = run("--ctx", "128", stdin=conversation).stdout
 check("Not enough context" in chat and "AI > Matteo" in chat, "Context guard lost earlier conversation")
 for args in [("--temp", "nan"), ("--top-p", "0"), ("--max-tokens", "0"), ("--threads", "0"),
-             ("--ctx", "16"), ("--threads", "4oops"), ("--unknown", "1"), ("--prompt", " ")]:
+             ("--ctx", "16"), ("--threads", "4oops"), ("--unknown", "1"), ("--prompt", " "),
+             ("--prefix-cache-mib", "-1"), ("--prefix-cache-mib", "1025")]:
     run(*args, success=False)
     checks += 1
 check(run(stdin="").returncode == 0, "EOF did not exit")
